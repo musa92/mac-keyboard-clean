@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# keyboard-clean — simple, safe "cleaning mode" for macOS
+# - Default: turns display off immediately, keeps Mac awake for a duration
+# - Optional: lock the session first (requires password to re-enter)
+# - No kernel hacks, no HID tricks — just safe built-in system calls
+
+DURATION="${DURATION:-600}"   # seconds; default 10 minutes
+MODE="${MODE:-display}"       # display | lock
+SOUND="${SOUND:-off}"         # on | off (plays a short countdown)
+VERSION="0.1.0"
+
+usage() {
+  cat <<EOF
+keyboard-clean v${VERSION}
+Usage:
+  keyboard-clean [--minutes N] [--mode display|lock] [--sound on|off]
+
+Options:
+  --minutes N       Cleaning window in minutes (default 10)
+  --mode MODE       'display' (screen off) or 'lock' (screen off + reminder to lock manually) (default display)
+  --sound on|off    Beeps during 3s countdown (default off)
+
+Notes:
+  - 'display' runs: pmset displaysleepnow + caffeinate -u -t <seconds>
+  - 'lock' runs: pmset displaysleepnow + caffeinate (with reminder to manually lock first)
+  - For true keyboard disable: manually press Cmd+Ctrl+Q BEFORE running the tool
+EOF
+}
+
+# --- parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --minutes)
+      shift; DURATION=$(( ${1:-10} * 60 ))
+      ;;
+    --mode)
+      shift; MODE="${1:-display}"
+      ;;
+    --sound)
+      shift; SOUND="${1:-off}"
+      ;;
+    -h|--help)
+      usage; exit 0
+      ;;
+    *)
+      echo "Unknown arg: $1" >&2; usage; exit 1
+      ;;
+  esac
+  shift || true
+done
+
+countdown() {
+  for i in 3 2 1; do
+    echo "Cleaning starts in ${i}..."
+    if [[ "$SOUND" == "on" ]]; then
+      # Simple system beep via AppleScript (avoids specifying files)
+      osascript -e 'beep 1' || true
+    fi
+    sleep 1
+  done
+}
+
+start_display_mode() {
+  echo "Entering cleaning mode: display off (${DURATION}s)"
+  pmset displaysleepnow
+  # Keep the session 'asserted' as user-active so machine doesn't fully sleep
+  caffeinate -u -t "${DURATION}"
+}
+
+start_lock_mode() {
+  echo "Entering cleaning mode: screen sleep + keep awake (${DURATION}s)"
+  echo "NOTE: This turns off the display. For full keyboard disable, manually lock (Cmd+Ctrl+Q) before running."
+  # Turn off display - this is the safest cross-compatible approach
+  pmset displaysleepnow
+  # Keep the session 'asserted' as user-active so machine doesn't fully sleep
+  caffeinate -u -t "${DURATION}"
+}
+
+echo "keyboard-clean v${VERSION}"
+echo "Mode: ${MODE}, Duration: ${DURATION}s, Sound: ${SOUND}"
+
+countdown
+
+case "$MODE" in
+  display) start_display_mode ;;
+  lock)    start_lock_mode ;;
+  *)
+    echo "Invalid mode '${MODE}'. Use 'display' or 'lock'." >&2
+    exit 2
+    ;;
+esac
+
+echo "Cleaning window ended."

@@ -1,0 +1,22 @@
+name: release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive source
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz -o dist/src.tar.gz HEAD
+          shasum -a 256 dist/src.tar.gz > dist/SHA256.txt
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/src.tar.gz
+            dist/SHA256.txt

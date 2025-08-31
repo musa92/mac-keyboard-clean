@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# keyboard-clean — simple, safe "cleaning mode" for macOS
+# Test version with dry-run capability
+
+DURATION="${DURATION:-600}"   # seconds; default 10 minutes
+MODE="${MODE:-display}"       # display | lock
+SOUND="${SOUND:-off}"         # on | off (plays a short countdown)
+DRY_RUN="${DRY_RUN:-false}"   # for testing
+VERSION="0.1.0"
+
+usage() {
+  cat <<EOF
+keyboard-clean v${VERSION} (test version)
+Usage:
+  keyboard-clean [--minutes N] [--mode display|lock] [--sound on|off] [--dry-run]
+
+Options:
+  --minutes N       Cleaning window in minutes (default 10)
+  --mode MODE       'display' (screen off) or 'lock' (lock screen) (default display)
+  --sound on|off    Beeps during 3s countdown (default off)
+  --dry-run         Show what would be executed without doing it
+
+Notes:
+  - 'display' runs: pmset displaysleepnow + caffeinate -u -t <seconds>
+  - 'lock' locks the session first (CGSession) then caffeinate keeps it awake
+EOF
+}
+
+# --- parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --minutes)
+      shift; DURATION=$(( ${1:-10} * 60 ))
+      ;;
+    --mode)
+      shift; MODE="${1:-display}"
+      ;;
+    --sound)
+      shift; SOUND="${1:-off}"
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      ;;
+    -h|--help)
+      usage; exit 0
+      ;;
+    *)
+      echo "Unknown arg: $1" >&2; usage; exit 1
+      ;;
+  esac
+  shift || true
+done
+
+countdown() {
+  for i in 3 2 1; do
+    echo "Cleaning starts in ${i}..."
+    if [[ "$SOUND" == "on" ]]; then
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "[DRY RUN] Would play: osascript -e 'beep 1'"
+      else
+        # Simple system beep via AppleScript (avoids specifying files)
+        osascript -e 'beep 1' || true
+      fi
+    fi
+    sleep 1
+  done
+}
+
+start_display_mode() {
+  echo "Entering cleaning mode: display off (${DURATION}s)"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[DRY RUN] Would execute: pmset displaysleepnow"
+    echo "[DRY RUN] Would execute: caffeinate -u -t ${DURATION}"
+    echo "[DRY RUN] Simulating ${DURATION} second wait..."
+    sleep 2
+  else
+    pmset displaysleepnow
+    # Keep the session 'asserted' as user-active so machine doesn't fully sleep
+    caffeinate -u -t "${DURATION}"
+  fi
+}
+
+start_lock_mode() {
+  echo "Entering cleaning mode: lock + keep awake (${DURATION}s)"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[DRY RUN] Would execute: osascript -e 'tell application \"System Events\" to keystroke \"q\" using {control down, command down}'"
+    echo "[DRY RUN] Would execute: caffeinate -u -t ${DURATION}"
+    echo "[DRY RUN] Simulating ${DURATION} second wait..."
+    sleep 2
+  else
+    # Lock the screen using osascript (more reliable across macOS versions)
+    osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}'
+    # Once locked, keep system 'user active' so it won't deep sleep during the window
+    caffeinate -u -t "${DURATION}"
+  fi
+}
+
+echo "keyboard-clean v${VERSION}"
+echo "Mode: ${MODE}, Duration: ${DURATION}s, Sound: ${SOUND}, Dry Run: ${DRY_RUN}"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[DRY RUN MODE] - No actual commands will be executed"
+fi
+
+countdown
+
+case "$MODE" in
+  display) start_display_mode ;;
+  lock)    start_lock_mode ;;
+  *)
+    echo "Invalid mode '${MODE}'. Use 'display' or 'lock'." >&2
+    exit 2
+    ;;
+esac
+
+echo "Cleaning window ended."

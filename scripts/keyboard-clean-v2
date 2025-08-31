@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# keyboard-clean — safe "cleaning mode" for macOS
+# Turns off display and keeps Mac awake during cleaning
+
+DURATION="${DURATION:-600}"   # seconds; default 10 minutes
+MODE="${MODE:-standard}"      # standard | remind
+SOUND="${SOUND:-off}"         # on | off (plays a short countdown)
+VERSION="0.1.0"
+
+usage() {
+  cat <<EOF
+keyboard-clean v${VERSION} - Safe keyboard cleaning for macOS
+
+RECOMMENDED CLEANING PROCESS:
+1. Run: keyboard-clean --mode remind
+2. When prompted, press Cmd+Ctrl+Q to lock your Mac
+3. Clean your keyboard safely (keys won't respond)
+4. Enter password when cleaning is done
+
+Usage:
+  keyboard-clean [--minutes N] [--mode standard|remind] [--sound on|off]
+
+Options:
+  --minutes N       Cleaning window in minutes (default 10)
+  --mode MODE       'standard' (screen off only) or 'remind' (with lock reminder) (default standard)
+  --sound on|off    Beeps during 3s countdown (default off)
+
+Notes:
+  - Both modes turn off the display and keep Mac awake
+  - For keyboard safety: manually lock (Cmd+Ctrl+Q) before or when prompted
+  - Screen will stay off for the full duration, then Mac returns to normal
+EOF
+}
+
+# --- parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --minutes)
+      shift; DURATION=$(( ${1:-10} * 60 ))
+      ;;
+    --mode)
+      shift; MODE="${1:-standard}"
+      ;;
+    --sound)
+      shift; SOUND="${1:-off}"
+      ;;
+    -h|--help)
+      usage; exit 0
+      ;;
+    *)
+      echo "Unknown arg: $1" >&2; usage; exit 1
+      ;;
+  esac
+  shift || true
+done
+
+countdown() {
+  for i in 3 2 1; do
+    echo "Starting in ${i}..."
+    if [[ "$SOUND" == "on" ]]; then
+      # Simple system beep via AppleScript
+      osascript -e 'beep 1' || true
+    fi
+    sleep 1
+  done
+}
+
+lock_reminder() {
+  echo ""
+  echo "🔒 FOR SAFE KEYBOARD CLEANING:"
+  echo "   Press Cmd+Ctrl+Q NOW to lock your Mac"
+  echo "   This will disable the keyboard completely"
+  echo ""
+  echo "Press Enter when ready to continue, or Ctrl+C to cancel..."
+  read -r
+}
+
+start_cleaning_mode() {
+  echo "Entering cleaning mode: display off, Mac awake (${DURATION}s)"
+  
+  # Turn off the display
+  pmset displaysleepnow
+  
+  # Keep the session awake during cleaning
+  caffeinate -u -t "${DURATION}"
+}
+
+echo "keyboard-clean v${VERSION}"
+echo "Duration: ${DURATION}s ($(( DURATION / 60 )) minutes), Mode: ${MODE}, Sound: ${SOUND}"
+
+if [[ "$MODE" == "remind" ]]; then
+  lock_reminder
+fi
+
+countdown
+start_cleaning_mode
+
+echo ""
+echo "Cleaning window ended. Mac is back to normal."
+echo "If you locked your screen, enter your password to continue."

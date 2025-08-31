@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Homebrew
+*.bottle.tar.gz
+*.bottle.json
+
+# Distribution
+dist/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
